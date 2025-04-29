@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <title>แดชบอร์ดศัตรูพืชถั่วแระญี่ปุ่น</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
+  <style>
+    body {
+      font-family: sans-serif;
+      max-width: 800px;
+      margin: auto;
+      padding: 20px;
+    }
+    h1 {
+      text-align: center;
+    }
+    label {
+      display: block;
+      margin-top: 10px;
+    }
+    input[type="number"] {
+      width: 100%;
+      padding: 5px;
+      font-size: 1rem;
+    }
+    button {
+      margin-top: 15px;
+      padding: 10px;
+      font-size: 1rem;
+      background-color: #007bff;
+      color: white;
+      border: none;
+      cursor: pointer;
+      border-radius: 5px;
+      margin-right: 10px;
+    }
+    canvas {
+      margin-top: 40px;
+    }
+    .note {
+      background-color: #f9f9f9;
+      padding: 10px;
+      border-left: 5px solid #007bff;
+      margin-top: 20px;
+      font-size: 0.95rem;
+    }
+    .entry-preview {
+      margin-top: 20px;
+      background-color: #eef;
+      padding: 10px;
+      border-radius: 5px;
+    }
+  </style>
+</head>
+<body>
+
+<h1>แดชบอร์ดศัตรูพืชในถั่วแระญี่ปุ่น</h1>
+<form id="surveyForm">
+  <div id="inputFields"></div>
+</form>
+
+<div style="margin-top: 10px;">
+  <button onclick="confirmEntry()">✅ ยืนยันข้อมูล</button>
+  <button onclick="undoLastEntry()">↩️ ย้อนกลับ</button>
+  <button onclick="clearData()" style="background-color: #dc3545;">🗑️ เคลียร์ข้อมูลทั้งหมด</button>
+  <button onclick="downloadExcel()">📥 ดาวน์โหลด Excel</button>
+</div>
+
+<canvas id="summaryChart" width="800" height="400"></canvas>
+
+<div class="note">
+  <strong>📌 หมายเหตุเกณฑ์การระบาด:</strong>
+  <ul>
+    <li>🦟 แมลงหวี่ขาว: ไม่เกิน 5 ตัวต่อต้น = การระบาด</li>
+    <li>🐛 หนอนทำลายใบ: 4 ต้นพบ 1 ตัว = การระบาด</li>
+    <li>🍃 โรคแอนแทรคโนส: พบ 1 ต้นจากสุ่ม 10 ต้น = การระบาด</li>
+    <li>🪳 มวนถั่วเหลือง: พบ 4 ตัวต่อความยาว 1 เมตร = การระบาด</li>
+    <li>🦠 เพลี้ยอ่อน: 5 ตัวต่อยอด = การระบาด</li>
+    <li>🌿 โรคใบจุดนูน: พบ 10 ต้นจาก 50 ต้น = การระบาด</li>
+    <li>🧫 โรครากเน่าโคนเน่า: พบ 10 ต้นจาก 50 ต้น = การระบาด</li>
+    <li>🪰 แมลงวันหนอนเจาะลำต้น: พบ 1 ตัวจาก 50 ต้น = การระบาด</li>
+  </ul>
+</div>
+
+<script>
+const pestLabels = [
+  "แมลงหวี่ขาว", "หนอนทำลายใบ", "มวนถั่วเหลือง", "เพลี้ยอ่อน",
+  "แมลงวันหนอนเจาะลำต้น", "โรคแอนแทรคโนส", "โรคใบจุดนูน", "โรครากเน่าโคนเน่า"
+];
+
+const outbreakThresholds = {
+  "แมลงหวี่ขาว": 5,
+  "หนอนทำลายใบ": 0.25,
+  "มวนถั่วเหลือง": 4,
+  "เพลี้ยอ่อน": 5,
+  "แมลงวันหนอนเจาะลำต้น": 1,
+  "โรคแอนแทรคโนส": 1,
+  "โรคใบจุดนูน": 10,
+  "โรครากเน่าโคนเน่า": 10
+};
+
+let records = [];
+
+function initForm() {
+  const container = document.getElementById('inputFields');
+  container.innerHTML = '';
+  pestLabels.forEach(pest => {
+    const label = document.createElement('label');
+    label.innerHTML = `${pest}: <input type="number" step="0.01" name="${pest}" required>`;
+    container.appendChild(label);
+  });
+}
+
+function getCurrentEntry() {
+  const inputs = document.querySelectorAll('#surveyForm input');
+  const entry = {};
+  inputs.forEach(input => {
+    entry[input.name] = parseFloat(input.value) || 0;
+  });
+  return entry;
+}
+
+function confirmEntry() {
+  const entry = getCurrentEntry();
+  entry.timestamp = new Date().toISOString();
+  records.push(entry);
+  drawChart();
+  // ล้างค่าช่องกรอกเพื่อเตรียมรอบถัดไป
+  document.querySelectorAll('#surveyForm input').forEach(input => input.value = '');
+}
+
+function undoLastEntry() {
+  records.pop();
+  drawChart();
+}
+
+function clearData() {
+  if (confirm("คุณแน่ใจหรือไม่ว่าต้องการลบข้อมูลทั้งหมด?")) {
+    records = [];
+    drawChart();
+  }
+}
+
+function downloadExcel() {
+  if (records.length === 0) {
+    alert("ยังไม่มีข้อมูลที่จะดาวน์โหลด");
+    return;
+  }
+  const fields = ['timestamp', ...pestLabels];
+  const data = records.map(r => {
+    const row = {};
+    fields.forEach(f => row[f] = r[f] || 0);
+    return row;
+  });
+  const ws = XLSX.utils.json_to_sheet(data);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'ศัตรูพืช');
+  XLSX.writeFile(wb, 'ข้อมูลศัตรูพืช.xlsx');
+}
+
+let chart;
+function drawChart() {
+  const labels = [
+    "🦟 แมลงหวี่ขาว", "🐛 หนอนทำลายใบ", "🪳 มวนถั่วเหลือง", "🦠 เพลี้ยอ่อน",
+    "🪰 แมลงวันเจาะลำต้น", "🍃 โรคแอนแทรคโนส", "🌿 โรคใบจุดนูน", "🧫 โรครากเน่าโคนเน่า"
+  ];
+  const keys = Object.keys(outbreakThresholds);
+  const totalValues = keys.map(key =>
+    records.reduce((sum, rec) => sum + (rec[key] || 0), 0)
+  );
+  const thresholds = keys.map(key => outbreakThresholds[key]);
+
+  const data = {
+    labels,
+    datasets: [
+      {
+        label: 'รวมจำนวนที่พบ',
+        data: totalValues,
+        backgroundColor: 'rgba(0, 128, 255, 0.6)'
+      },
+      {
+        label: 'ระดับการระบาด',
+        data: thresholds,
+        backgroundColor: 'rgba(255, 99, 132, 0.6)'
+      }
+    ]
+  };
+
+  const config = {
+    type: 'bar',
+    data,
+    options: {
+      plugins: {
+        datalabels: {
+          anchor: 'end',
+          align: 'top',
+          color: '#000',
+          font: { weight: 'bold' },
+          formatter: Math.round
+        }
+      },
+      scales: { y: { beginAtZero: true } }
+    },
+    plugins: [ChartDataLabels]
+  };
+
+  if (chart) chart.destroy();
+  chart = new Chart(document.getElementById('summaryChart'), config);
+}
+
+initForm();
+</script>
+
+</body>
+</html>
